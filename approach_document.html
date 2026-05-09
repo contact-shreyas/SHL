@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHL Assessment Recommender — Approach Document</title>
+    <style>
+        body {
+            font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 0.5in;
+            line-height: 1.4;
+            color: #333;
+            font-size: 10px;
+        }
+        h1 {
+            font-size: 16px;
+            margin: 12px 0 6px 0;
+            page-break-after: avoid;
+        }
+        h2 {
+            font-size: 12px;
+            margin: 10px 0 4px 0;
+            page-break-after: avoid;
+        }
+        h3 {
+            font-size: 11px;
+            margin: 8px 0 3px 0;
+            page-break-after: avoid;
+        }
+        p {
+            margin: 4px 0;
+        }
+        ul {
+            margin: 4px 0;
+            padding-left: 20px;
+        }
+        li {
+            margin: 2px 0;
+        }
+        pre {
+            font-size: 9px !important;
+            line-height: 1.2 !important;
+        }
+        code {
+            font-size: 9px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: left;
+            font-size: 9px;
+        }
+        th {
+            background-color: #f9f9f9;
+        }
+        strong {
+            font-weight: bold;
+        }
+        @media print {
+            body {
+                margin: 0;
+                padding: 0.5in;
+            }
+            h1, h2, h3 {
+                page-break-after: avoid;
+            }
+            ul, p {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+<p><h1>SHL Assessment Recommender — Approach Document</h1></p><p><h2>Problem Decomposition</h2></p><p>The core challenge is bridging the gap between a hiring manager's *vague intent* and a *grounded shortlist* of SHL Individual Test Assessments. This requires three interlocking capabilities:</p><p>1. <strong>Catalog grounding</strong> — the agent must never hallucinate assessment names or URLs.
+2. <strong>Conversational state management</strong> — clarify before committing; honour mid-conversation edits.
+3. <strong>Scope enforcement</strong> — hard refusal of off-topic queries and prompt-injection attempts.</p><p>---</p><p><h2>System Architecture</h2></p><p><pre style="background-color: #f4f4f4; padding: 10px; overflow-x: auto; font-size: 11px;">POST /chat (stateless, full history)
+      │
+      ▼
+ Retrieval Layer
+ ─────────────────────────────────────────
+ • Sentence-Transformers (all-MiniLM-L6-v2)
+   encodes the last 3 user turns as a query.
+ • FAISS IndexFlatIP (cosine via normalised
+   inner-product) returns top-20 candidates.
+ • Catalog text = name + description + levels
+   + test types + languages (rich metadata blob).
+      │
+      ▼
+ Generation Layer
+ ─────────────────────────────────────────
+ • System prompt embeds STRICT RULES
+   (no hallucination, refuse off-topic,
+   clarify before recommending, etc.).
+ • First user turn is prepended with the
+   top-20 catalog context block.
+ • Gemini 1.5 Flash (primary, free tier).
+ • Groq llama-3.1-8b-instant (fallback).
+ • Temperature = 0.2 for reproducibility.
+      │
+      ▼
+ Validation Layer
+ ─────────────────────────────────────────
+ • LLM instructed to reply ONLY in JSON.
+ • Response parsed; every recommendation URL
+   checked against the set of scraped catalog
+   URLs — hallucinated URLs are silently dropped.
+ • Schema validated against Pydantic model
+   before returning to caller.</pre></p><p>---</p><p><h2>Retrieval Design</h2></p><p><strong>Why FAISS over a hosted vector DB?</strong> Zero-latency startup on Render's free tier, no extra credentials, and the catalog is small enough (<400 items) to fit in memory.</p><p><strong>Why all-MiniLM-L6-v2?</strong> It offers a good balance between embedding quality and cold-start speed (no GPU needed). For a catalog of this size, re-ranking via the LLM's own attention is more valuable than a larger bi-encoder.</p><p><strong>Query construction:</strong> The last three user turns are concatenated to form the retrieval query. This captures topic drift (e.g., "also add personality tests") without over-weighting early context.</p><p><strong>Catalog text:</strong> Each product is rendered as a single text blob including name, description, job levels, test types (expanded to human-readable), languages, and duration. This maximises semantic overlap with hiring-language queries.</p><p>---</p><p><h2>Prompt Design</h2></p><p>The system prompt is structured around three concerns:</p><p>Concern Implementation |
+------|
+Grounding Catalog context is injected into every call; the model is told URLs must come from context |
+Behaviour Explicit numbered rules (clarify first, refuse off-topic, honour edits) |
+Output contract JSON-only output schema specified; Pydantic + URL allow-list as final guard |</p><p>The prompt avoids lengthy examples (which eat context) in favour of clear rules, relying on the catalog context block to supply all factual grounding.</p><p>---</p><p><h2>Conversational Behaviour</h2></p><p>Turn type Trigger Action
+---------
+Vague First turn, no role/level Ask for role title and seniority
+Sufficient context Role + level + 1 more signal Recommend 1–10 assessments
+Refinement User changes constraints Re-retrieve with updated query; update shortlist
+Comparison "Difference between X and Y" Ground answer in catalog descriptions
+Off-topic / injection Non-SHL content Refuse with empty recommendations</p><p>The stateless design means every call re-runs retrieval and generation from scratch. This is intentional: it avoids state-drift bugs and keeps the turn cap (8) easy to enforce.</p><p>---</p><p><h2>Evaluation Approach</h2></p><p><strong>Schema compliance</strong> is enforced by Pydantic on every response and by URL allow-list filtering. This is deterministic and always passes if the LLM follows the output contract.</p><p><strong>Recall@10</strong> was measured by manually stepping through the 10 public traces and checking final recommendation overlap with the expected shortlist. The retrieval layer consistently surfaced the expected items in the top-20 candidates; the LLM re-ranked to the top-10 correctly for 8/10 traces. The two misses were cases where the expected assessment had sparse catalog metadata (no job-level field populated), addressed by enriching the metadata text blob with inferred signals from the product name.</p><p><strong>Behaviour probes</strong> were tested by:
+<ul><li>Submitting single-turn vague queries and asserting <code style="background-color: #f0f0f0; padding: 2px 5px; font-family: monospace;">recommendations == []</code></li>
+<ul><li>Submitting off-topic questions (GDPR, salary negotiation) and asserting refusal</li>
+<ul><li>Submitting a two-turn sequence with an edit instruction ("also add personality") and asserting the shortlist changed</li></p><p>---</p><p><h2>What Didn't Work</h2></p><p>1. <strong>Larger retrieval window (top-50):</strong> Diluted context and caused the LLM to hallucinate names from the noisy tail of results. Settled on top-20.
+2. <strong>Zero-shot JSON without schema in prompt:</strong> Gemini would occasionally wrap JSON in markdown fences or add preamble. Fixed by explicit "reply ONLY with JSON" instruction and a regex strip in the parser.
+3. <strong>Single-query retrieval:</strong> Vague first turns produced poor candidates. Fixed by using the last 3 user turns as the query.</p><p>---</p><p><h2>Tools Used</h2></p><p><ul><li><strong>AI assistance:</strong> GitHub Copilot for boilerplate; Claude for prompt iteration and debugging. All design decisions and code logic are my own.</li>
+<ul><li><strong>Libraries:</strong> sentence-transformers, faiss-cpu, FastAPI, httpx, Pydantic, BeautifulSoup4.</li>
+<ul><li><strong>Deployment:</strong> Render free tier (512 MB RAM, auto-sleep).</li>
+<ul><li><strong>LLMs:</strong> Gemini 1.5 Flash (primary, free), Groq llama-3.1-8b-instant (fallback, free).</li>
+</p>
+</body>
+</html>
