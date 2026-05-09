@@ -4,7 +4,7 @@ services:
     runtime: python
     pythonVersion: "3.12.3"
     buildCommand: |
-      pip install -r requirements.txt
+      pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
       python scripts/scrape_catalog.py
       python scripts/build_index.py
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
