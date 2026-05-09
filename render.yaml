@@ -2,6 +2,7 @@ services:
   - type: web
     name: shl-recommender
     runtime: python
+    pythonVersion: "3.12.3"
     buildCommand: |
       pip install -r requirements.txt
       python scripts/scrape_catalog.py
