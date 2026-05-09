@@ -1,0 +1,197 @@
+═══════════════════════════════════════════════════════════════════════════
+SHL ASSESSMENT RECOMMENDER - DEPLOYMENT INSTRUCTIONS
+═══════════════════════════════════════════════════════════════════════════
+
+✅ COMPLETED:
+  • Code committed to GitHub: https://github.com/contact-shreyas/SHL
+  • All dependencies configured in requirements.txt
+  • Render deployment config ready (render.yaml)
+
+═══════════════════════════════════════════════════════════════════════════
+DEPLOYMENT TO RENDER (Free Tier)
+═══════════════════════════════════════════════════════════════════════════
+
+STEP 1: Get LLM API Keys (Required)
+  ────────────────────────────────
+  
+  Option A - Use Gemini (Recommended - FREE):
+    1. Go to: https://aistudio.google.com
+    2. Click "Get API Key"
+    3. Click "Create API Key in new project"
+    4. Copy the key
+    
+  Option B - Use Groq (Fallback - FREE):
+    1. Go to: https://console.groq.com/keys
+    2. Sign up with email/GitHub
+    3. Copy the API key
+
+STEP 2: Deploy on Render
+  ────────────────────────
+  
+  1. Go to: https://render.com
+  2. Sign up (or log in if you have account)
+  3. Click "New +" button → Select "Web Service"
+  4. Connect GitHub repo:
+     - Search for: "SHL" or "contact-shreyas/SHL"
+     - Click "Connect"
+  5. Fill in deployment form:
+     - Name: shl-recommender
+     - Environment: Python 3
+     - Build Command: (auto-detected from render.yaml)
+     - Start Command: (auto-detected from Procfile)
+  6. Add Environment Variables:
+     - Key: GEMINI_API_KEY
+       Value: [paste your Gemini key from Step 1]
+     - Key: GROQ_API_KEY
+       Value: [optional - paste Groq key]
+  7. Click "Create Web Service"
+  8. WAIT 3-5 MINUTES for build and deployment
+
+STEP 3: Get Your Public URL
+  ──────────────────────────
+  Once deployed, Render will assign a URL like:
+    https://shl-recommender.onrender.com
+  
+  This URL will have both endpoints:
+    • GET  /health
+    • POST /chat
+
+═══════════════════════════════════════════════════════════════════════════
+TESTING THE API
+═══════════════════════════════════════════════════════════════════════════
+
+Once deployed, test with these commands:
+
+Test 1: Health Check
+  curl https://shl-recommender.onrender.com/health
+  
+  Expected response:
+    {"status":"ok"}
+
+Test 2: Chat Endpoint (vague query - no recommendations expected)
+  curl -X POST https://shl-recommender.onrender.com/chat \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":"I need an assessment"}]}'
+  
+  Expected response:
+    {
+      "reply": "I'd like to help. Could you tell me...",
+      "recommendations": [],
+      "end_of_conversation": false
+    }
+
+Test 3: Chat Endpoint (specific query - recommendations expected)
+  curl -X POST https://shl-recommender.onrender.com/chat \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":"Hiring a Java developer, mid-level, 4 years experience"}]}'
+  
+  Expected response:
+    {
+      "reply": "Here are assessments for a mid-level Java developer...",
+      "recommendations": [
+        {"name":"Java 8", "url":"https://www.shl.com/...", "test_type":"K"},
+        {"name":"OPQ32r", "url":"https://www.shl.com/...", "test_type":"P"}
+      ],
+      "end_of_conversation": false
+    }
+
+═══════════════════════════════════════════════════════════════════════════
+CREATING PDF FROM HTML
+═══════════════════════════════════════════════════════════════════════════
+
+The approach document is available as:
+  • approach_document.md (original markdown)
+  • approach_document.html (formatted HTML, printable)
+
+To create PDF (2 pages):
+
+  LOCAL METHOD:
+    1. Open file: c:\1. transfer\shl-recommender\approach_document.html
+    2. In your browser, press Ctrl+P (Print)
+    3. Select "Save as PDF"
+    4. Save as: approach_document.pdf
+
+  WEB METHOD:
+    1. Go to: https://github.com/contact-shreyas/SHL
+    2. Navigate to: approach_document.html
+    3. Click the Raw button
+    4. Right-click → Save Page As → Save as PDF
+
+═══════════════════════════════════════════════════════════════════════════
+COLD START BEHAVIOR
+═══════════════════════════════════════════════════════════════════════════
+
+Render Free Tier Auto-Sleep:
+  • After 15 minutes of inactivity: service spins down
+  • First request after inactivity: 30-60 seconds delay
+  • Subsequent requests: <1 second response time
+
+This is expected behavior. To minimize cold starts in production, upgrade
+to Render's paid tier ($7/month).
+
+═══════════════════════════════════════════════════════════════════════════
+TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════
+
+If /health returns error:
+  → Check that deployment completed (should show "Live" in Render dashboard)
+  → View logs in Render: Dashboard → Logs tab
+
+If /chat returns error:
+  → Verify GEMINI_API_KEY is set in Render Environment Variables
+  → Check that API key is valid (test at: https://aistudio.google.com)
+  → If Gemini fails, system will fall back to Groq (if key available)
+  → If both fail, mock LLM returns reasonable responses (for testing)
+
+If build fails:
+  → Check build logs in Render dashboard
+  → Verify all packages in requirements.txt are valid
+
+═══════════════════════════════════════════════════════════════════════════
+ANSWERS TO ASSIGNMENT QUESTIONS
+═══════════════════════════════════════════════════════════════════════════
+
+1. Public API Base URL:
+   https://shl-recommender.onrender.com
+   (Available after you complete STEP 2 above)
+
+2. Cold-Start Delay:
+   Yes - Render free tier auto-sleeps after 15 min inactivity.
+   First request after inactivity: 30-60 seconds
+   Subsequent requests: <1 second
+
+3. LLM Used:
+   Primary: Gemini 1.5 Flash (free tier, best quality)
+   Fallback: Groq llama-3.1-8b-instant (if Gemini fails)
+
+4. AI Tools Used:
+   • GitHub Copilot (boilerplate code)
+   • Claude AI (prompt iteration & debugging)
+   • All design decisions and code logic are original
+
+5. PDF Approach Document:
+   See "CREATING PDF FROM HTML" section above
+   File: approach_document.html (can be printed to PDF)
+
+═══════════════════════════════════════════════════════════════════════════
+DEPLOYMENT CHECKLIST
+═══════════════════════════════════════════════════════════════════════════
+
+  ☐ Step 1: Get Gemini API key from aistudio.google.com
+  ☐ Step 2: Deploy to Render using GitHub connection
+  ☐ Step 3: Set GEMINI_API_KEY in Render environment variables
+  ☐ Step 4: Wait for deployment to complete (3-5 minutes)
+  ☐ Step 5: Note the public URL assigned by Render
+  ☐ Step 6: Test /health endpoint
+  ☐ Step 7: Test /chat endpoint
+  ☐ Step 8: Convert approach_document.html to PDF
+  ☐ Step 9: Submit all answers with deployed URL
+
+═══════════════════════════════════════════════════════════════════════════
+
+Questions? Check:
+  • Render Dashboard: https://dashboard.render.com
+  • GitHub Repo: https://github.com/contact-shreyas/SHL
+  • API Docs: FastAPI Auto-docs at https://shl-recommender.onrender.com/docs
+
+═══════════════════════════════════════════════════════════════════════════
