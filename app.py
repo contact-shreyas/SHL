@@ -337,6 +337,22 @@ def _parse_llm_response(raw: str, catalog: list[dict]) -> ChatResponse:
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+@app.get("/")
+async def root():
+    return {
+        "name": "SHL Assessment Recommender",
+        "version": "1.0.0",
+        "endpoints": {
+            "GET /": "This welcome page",
+            "GET /health": "Health check",
+            "POST /chat": "Chat endpoint for assessment recommendations",
+            "GET /docs": "Interactive API documentation (Swagger UI)",
+            "GET /redoc": "Alternative API documentation (ReDoc)",
+        },
+        "usage": "POST to /chat with {'messages': [{'role': 'user', 'content': 'your query'}]}"
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
